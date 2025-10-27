@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CSV Processor with Match Check, Search, Sort & Export</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      padding: 20px;
+      background: #f9fafb;
+    }
+
+    input[type="file"],
+    input[type="text"],
+    button {
+      margin-bottom: 15px;
+      padding: 8px;
+      font-size: 14px;
+    }
+
+    button {
+      cursor: pointer;
+      background: #007bff;
+      border: none;
+      color: white;
+      border-radius: 4px;
+      margin-left: 10px;
+      transition: background 0.2s;
+    }
+
+    button:hover {
+      background: #0056b3;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin-top: 10px;
+      background: #fff;
+      box-shadow: 0 0 6px rgba(0, 0, 0, 0.1);
+    }
+
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      text-align: left;
+    }
+
+    th {
+      background-color: #f4f4f4;
+      cursor: pointer;
+      position: relative;
+    }
+
+    th:hover {
+      background-color: #e9e9e9;
+    }
+
+    tr:nth-child(even) {
+      background-color: #f9f9f9;
+    }
+
+    .sort-indicator {
+      font-size: 12px;
+      margin-left: 5px;
+    }
+
+    #searchBox {
+      display: block;
+      width: 100%;
+      max-width: 400px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+
+    #controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .true-cell {
+      color: green;
+      font-weight: bold;
+    }
+
+    .false-cell {
+      color: red;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <h2>CSV Processor with Column Match, Search, Sort & Export</h2>
+
+  <div id="controls">
+    <input type="file" id="csvFileInput" accept=".csv" />
+    <input type="text" id="searchBox" placeholder="Search..." />
+    <button id="downloadBtn" disabled>⬇️ Download CSV</button>
+  </div>
+
+  <div id="tableContainer"></div>
+
+  <script>
+    let csvData = [];
+    let processedData = [];
+    let filteredData = [];
+    const sortDirection = {};
+
+    const fileInput = document.getElementById("csvFileInput");
+    const searchBox = document.getElementById("searchBox");
+    const downloadBtn = document.getElementById("downloadBtn");
+    const tableContainer = document.getElementById("tableContainer");
+
+    // --- Handle CSV Upload ---
+    fileInput.addEventListener("change", async (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+
+      const text = await file.text(); // modern async file reading
+      csvData = parseCSV(text);
+      processedData = addComparisonColumn(csvData);
+      filteredData = processedData;
+
+      displayTable(filteredData);
+      downloadBtn.disabled = false;
+    });
+
+    // --- Search ---
+    searchBox.addEventListener("input", (event) => {
+      const query = event.target.value.toLowerCase();
+      filteredData = processedData.filter((row, i) => {
+        if (i === 0) return true; // keep header
+        return row.some(cell => cell.toLowerCase().includes(query));
+      });
+      displayTable(filteredData);
+    });
+
+    // --- Parse CSV (handles quotes, commas, etc.) ---
+    const parseCSV = (text) => {
+      const rows = [];
+      let currentRow = [];
+      let currentValue = "";
+      let insideQuotes = false;
+
+      for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+        const nextChar = text[i + 1];
+
+        if (char === '"') {
+          if (insideQuotes && nextChar === '"') {
+            currentValue += '"';
+            i++;
+          } else {
+            insideQuotes = !insideQuotes;
+          }
+        } else if (char === "," && !insideQuotes) {
+          currentRow.push(currentValue.trim());
+          currentValue = "";
+        } else if ((char === "\n" || char === "\r") && !insideQuotes) {
+          if (currentValue || currentRow.length > 0) {
+            currentRow.push(currentValue.trim());
+            rows.push(currentRow);
+            currentRow = [];
+            currentValue = "";
+          }
+        } else {
+          currentValue += char;
+        }
+      }
+
+      if (currentValue || currentRow.length > 0) {
+        currentRow.push(currentValue.trim());
+        rows.push(currentRow);
+      }
+
+      return rows.filter((row) => row.some((cell) => cell.trim() !== ""));
+    };
+
+    // --- Add Column C: Comparison Result ---
+    const addComparisonColumn = (data) => {
+      if (data.length === 0) return [];
+
+      const newData = data.map((row) => [...row]);
+      const header = newData[0];
+      header.push("Match (A in B)");
+
+      for (let i = 1; i < newData.length; i++) {
+        const colA = (newData[i][0] || "").replace(/\s+/g, "").toLowerCase();
+        const colB = (newData[i][1] || "").replace(/\s+/g, "").toLowerCase();
+        const isMatch = colB.includes(colA) && colA.length > 0;
+        newData[i].push(isMatch ? "TRUE" : "FALSE");
+      }
+
+      return newData;
+    };
+
+    // --- Display Table ---
+    const displayTable = (data) => {
+      tableContainer.innerHTML = "";
+
+      if (data.length === 0) {
+        tableContainer.textContent = "No data found.";
+        return;
+      }
+
+      const table = document.createElement("table");
+      const thead = document.createElement("thead");
+      const tbody = document.createElement("tbody");
+
+      // Header
+      const headerRow = document.createElement("tr");
+      data[0].forEach((header, index) => {
+        const th = document.createElement("th");
+        th.textContent = header;
+        th.addEventListener("click", () => sortTableByColumn(index));
+        th.innerHTML += `<span class="sort-indicator"></span>`;
+        headerRow.appendChild(th);
+      });
+      thead.appendChild(headerRow);
+
+      // Body
+      for (let i = 1; i < data.length; i++) {
+        const row = document.createElement("tr");
+        data[i].forEach((cell, colIndex) => {
+          const td = document.createElement("td");
+          td.textContent = cell;
+          if (colIndex === data[0].length - 1) {
+            td.className = cell === "TRUE" ? "true-cell" : "false-cell";
+          }
+          row.appendChild(td);
+        });
+        tbody.appendChild(row);
+      }
+
+      table.append(thead, tbody);
+      tableContainer.appendChild(table);
+    };
+
+    // --- Sorting ---
+    const sortTableByColumn = (colIndex) => {
+      const headers = document.querySelectorAll("th");
+      const header = headers[colIndex];
+      const indicator = header.querySelector(".sort-indicator");
+      const direction = sortDirection[colIndex] === "asc" ? "desc" : "asc";
+      sortDirection[colIndex] = direction;
+
+      const headerRow = filteredData[0];
+      const sortedRows = filteredData.slice(1).sort((a, b) => {
+        const valA = a[colIndex]?.toLowerCase() || "";
+        const valB = b[colIndex]?.toLowerCase() || "";
+        if (!isNaN(valA) && !isNaN(valB)) {
+          return direction === "asc" ? valA - valB : valB - valA;
+        }
+        return direction === "asc"
+          ? valA.localeCompare(valB)
+          : valB.localeCompare(valA);
+      });
+
+      filteredData = [headerRow, ...sortedRows];
+      displayTable(filteredData);
+
+      document
+        .querySelectorAll(".sort-indicator")
+        .forEach((el) => (el.textContent = ""));
+      indicator.textContent = direction === "asc" ? "▲" : "▼";
+    };
+
+    // --- CSV Download ---
+    const downloadCSV = () => {
+      if (filteredData.length === 0) return;
+
+      const csvContent = filteredData
+        .map((row) =>
+          row
+            .map((cell) => {
+              if (cell.includes(",") || cell.includes('"') || cell.includes("\n")) {
+                return `"${cell.replace(/"/g, '""')}"`;
+              }
+              return cell;
+            })
+            .join(",")
+        )
+        .join("\n");
+
+      const blob = new Blob([csvContent], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+
+      const a = Object.assign(document.createElement("a"), {
+        href: url,
+        download: "processed_data.csv",
+      });
+
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 100);
+    };
+
+    downloadBtn.addEventListener("click", downloadCSV);
+  </script>
+</body>
+</html>

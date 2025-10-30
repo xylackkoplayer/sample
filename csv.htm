@@ -300,6 +300,77 @@
     };
 
     downloadBtn.addEventListener("click", downloadCSV);
+
+    // --- Levenshtein Distance ---
+function levenshteinDistance(a, b) {
+  const matrix = Array.from({ length: a.length + 1 }, () =>
+    Array(b.length + 1).fill(0)
+  );
+
+  for (let i = 0; i <= a.length; i++) matrix[i][0] = i;
+  for (let j = 0; j <= b.length; j++) matrix[0][j] = j;
+
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,     // Deletion
+        matrix[i][j - 1] + 1,     // Insertion
+        matrix[i - 1][j - 1] + cost // Substitution
+      );
+    }
+  }
+
+  return matrix[a.length][b.length];
+}
+
+// --- Get similarity percentage between two strings ---
+function getSimilarity(str1, str2) {
+  if (!str1 || !str2) return 0;
+
+  const clean1 = str1.replace(/[^a-z0-9\s]/gi, '').toLowerCase();
+  const clean2 = str2.replace(/[^a-z0-9\s]/gi, '').toLowerCase();
+
+  const distance = levenshteinDistance(clean1, clean2);
+  const maxLength = Math.max(clean1.length, clean2.length);
+  const similarity = 1 - distance / maxLength;
+
+  return Math.max(0, similarity * 100); // %
+}
+
+// --- Compare phrases (1–7 words) and return best similarity % ---
+function phraseSimilarity(source, target) {
+  if (!source || !target) return 0;
+
+  const cleanSource = source.replace(/[^a-z0-9\s]/gi, '').toLowerCase().split(/\s+/);
+  const cleanTarget = target.replace(/[^a-z0-9\s]/gi, '').toLowerCase().split(/\s+/);
+
+  let bestMatch = 0;
+  let bestPair = ["", ""];
+
+  for (let i = 0; i < cleanSource.length; i++) {
+    for (let len = 1; len <= 7 && i + len <= cleanSource.length; len++) {
+      const phrase = cleanSource.slice(i, i + len).join(' ');
+
+      for (let j = 0; j < cleanTarget.length; j++) {
+        for (let tlen = 1; tlen <= 7 && j + tlen <= cleanTarget.length; tlen++) {
+          const targetPhrase = cleanTarget.slice(j, j + tlen).join(' ');
+          const similarity = getSimilarity(phrase, targetPhrase);
+
+          if (similarity > bestMatch) {
+            bestMatch = similarity;
+            bestPair = [phrase, targetPhrase];
+          }
+        }
+      }
+    }
+  }
+
+  //console.log(🔍 Best match: "${bestPair[0]}" ↔ "${bestPair[1]}" = ${bestMatch.toFixed(2)}%`);
+
+  return bestMatch.toFixed(2);
+}
+
   </script>
 </body>
 </html>
